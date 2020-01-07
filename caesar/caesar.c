@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (!check_numericality(argv[1])) {
+  if (!check_numericality(key)) {
     printf("Usage: ./caesar key\n");
     return 1;
   }
