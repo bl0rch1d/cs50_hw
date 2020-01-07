@@ -2,46 +2,81 @@
 #include <cs50.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+
+const int STRING_MAX_LENGTH = 50;
 
 bool check_args_quantity(int x);
-bool check_numericality(char x[]);
+bool check_numericality(char *x);
+int to_int(char *key);
+char * get_plaintext(void);
+char * encrypt(int shift, int size, char *plain_text);
 
 int main(int argc, char *argv[]) {
   char *key = argv[1];
 
-  // Check that args are equal to 2
-  if (argc > 2 ) {
+  if (!check_args_quantity(argc)) {
     printf("Usage: ./caesar key\n");
     return 1;
   }
 
-  // Check that all elements in string are numbers
+  if (!check_numericality(key)) {
+    printf("Usage: ./caesar key\n");
+    return 1;
+  }
+
+  int shift = to_int(key);
+  char *plain_text = get_plaintext();
+
+  // Calculate size of string entered by user
+  size_t size = strlen(plain_text);
+
+  char *result = encrypt(shift, size, plain_text);
+
+  // Print encrypted message
+  printf("ciphertext: %s\n", result);
+}
+
+// Check that args are equal to 2
+bool check_args_quantity(int x) {
+  return x == 2;
+}
+
+// Check that all elements in string are numbers
+bool check_numericality(char *x) {
   int i = 0;
-  while (key[i] != '\0') {
-    if ((int)key[i] < 47 || (int)key[i] > 58) {
-      printf("Usage: ./caesar key\n");
-      return 1;
-    }
+  while (x[i] != '\0') {
+    if ((int) x[i] < 48 || (int) x[i] > 57) return false;
 
     i++;
   }
 
-  // Convert key to int
+  return true;
+}
+
+// Convert key to int
+int to_int(char *key) {
   int shift = 0;
   for (int i = 0; i < strlen(key); i++) {
     shift += (key[i] - '0') * (int) pow(10, (strlen(key) - (i + 1)));
   }
 
-  // Get plain text from user
-  char plain_text[50];
+  return shift;
+}
+
+// Get plain text from user
+char *get_plaintext(void) {
+  char *plain_text = malloc(STRING_MAX_LENGTH * sizeof(char));
   printf("plaintext: ");
   scanf("%[^\n]%*c", plain_text);
 
-  // Calculate size of string entered by user
-  size_t size = strlen(plain_text);
+  return plain_text;
+}
 
-  // Encrypt
-  char result[50];
+// Encrypt
+char * encrypt(int shift, int size, char *plain_text) {
+  char *result = malloc(STRING_MAX_LENGTH * sizeof(char));
+
   for (int j = 0; j < size + 1; j++) {
     char c = plain_text[j];
 
@@ -62,6 +97,5 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Print encrypted message
-  printf("ciphertext: %s\n", result);
+  return result;
 }
