@@ -8,7 +8,7 @@
 #include "bmp.h"
 
 const int ARGS_COUNT = 4;
-const char ERR_MSG[] = "Usage: copy infile outfile\n";
+const char ERR_MSG[] = "Usage: resize multiplier infile outfile\n";
 
 bool check_args_quantity(int x);
 bool check_numericality(char *x);
