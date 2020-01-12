@@ -59,8 +59,7 @@ int main(int argc, char *argv[]) {
 
   // ensure infile is (likely) a 24-bit uncompressed BMP 4.0
   if (bf.bfType != 0x4d42 || bf.bfOffBits != 54 || bi.biSize != 40 ||
-    bi.biBitCount != 24 || bi.biCompression != 0)
-  {
+    bi.biBitCount != 24 || bi.biCompression != 0) {
     fclose(outptr);
     fclose(inptr);
     fprintf(stderr, "Unsupported file format.\n");
@@ -75,11 +74,11 @@ int main(int argc, char *argv[]) {
 
   // iterate over infile's scanlines
   int read_counter = 0;
-  for (int i = 0, biHeight = abs(bi.biHeight); i < biHeight; i++)
-  {
+  for (int i = 0, biHeight = abs(bi.biHeight); i < biHeight; i++) {
+
     // iterate over pixels in scanline
-    for (int j = 0; j < bi.biWidth; j++)
-    {
+    for (int j = 0; j < bi.biWidth; j++) {
+
       // read RGB triple from infile
       fread(&triple[read_counter], sizeof(RGBTRIPLE), 1, inptr);
       read_counter++;
