@@ -1,3 +1,5 @@
+// gcc recover.c; ./a.out card.raw
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
