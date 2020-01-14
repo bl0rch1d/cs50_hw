@@ -5,44 +5,44 @@
 
 typedef uint8_t BYTE;
 
+const int BLOCK_SIZE = 512;
+
 int main(int argc, char *argv[]) {
+  // Filename for reading
   char *infile = argv[1];
 
+  // Open file for reading
   FILE *inptr = fopen(infile, "rb");
-  int image_count = 0;
 
+  // Count length of file to read
   fseek(inptr, 0L, SEEK_END);
   int filesize = ftell(inptr);
   rewind(inptr);
 
   int file = 0;
+  int image_counter = 0;
   FILE *img;
-  for (int i = 0; i < 512 * 2; i++) {
-    BYTE *test = malloc(512);
+  for (int i = 0; i < (filesize / BLOCK_SIZE); i++) {
+    // Initialize and read block of file
+    BYTE *block = malloc(BLOCK_SIZE);
+    fread(block, BLOCK_SIZE, 1, inptr);
 
-    fread(test, 512, 1, inptr);
+    // Check if block includes a JPEG headers
+    if (block[0] == 0xff && block[1] == 0xd8 && block[2] == 0xff && (block[3] & 0xf0) == 0xe0) {
+      file++;
+      image_counter++;
 
-    printf("\n====================================================================================== NEW BLOCK #%d ==============================================================================\n", i);
-    for (int i = 0; i < 512; i++) {
-      printf("0x%x\t", test[i]);
+      // Create and open file for new image
+      char filename[10];
+      sprintf(filename, "%03i.jpg", image_counter);
+      img = fopen(filename, "w");
     }
 
-    if (test[0] == 0xff && test[1] == 0xd8 && test[2] == 0xff && (test[3] & 0xf0) == 0xe0) {
-      image_count++;
-      sprintf(test, "%03i.jpg", image_count);
-      img = fopen(test, "w");
-      // file = 1;
-    }
+    // Write data to image file
+    if (file > 0) fwrite(block, BLOCK_SIZE, 1, img);
 
-    fwrite(test, 512, 1, img);
-
-    printf("\n====================================================================================================================================================================================\n");
-    // free(test);
-    // fclose(inptr);
+    free(block);
   }
 
-  printf("%d\n", image_count);
-
-  // free(test);
   fclose(inptr);
 }
