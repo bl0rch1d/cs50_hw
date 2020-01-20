@@ -46,7 +46,7 @@ class CardValidator:
 
         if total_sum % 10 != 0:
             print('INVALID')
-            exit(1)
+            exit(0)
 
     def __step_3(self):
         if self.__cnl[0:2] in [[3, 7], [3, 4]]:
