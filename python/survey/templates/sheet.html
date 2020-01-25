@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+
+{% block main %}
+
+  <h1 class="mb-3">Sheet</h1>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>House</th>
+        <th>Position</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in data %}
+        <tr>
+          {% for value in row %}
+            <td> {{ value  }} </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% endblock %}
+
