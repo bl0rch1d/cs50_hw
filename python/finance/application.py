@@ -16,6 +16,7 @@ app = Flask(__name__)
 # Ensure templates are auto-reloaded
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+
 # Ensure responses aren't cached
 @app.after_request
 def after_request(response):
@@ -23,6 +24,7 @@ def after_request(response):
     response.headers["Expires"] = 0
     response.headers["Pragma"] = "no-cache"
     return response
+
 
 # Custom filter
 app.jinja_env.filters["usd"] = usd
@@ -34,7 +36,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///finance.db")
+db = SQL("sqlite:///finance.db", connect_args={'check_same_thread': False})
 
 
 @app.route("/")
@@ -42,16 +44,22 @@ db = SQL("sqlite:///finance.db")
 def index():
     """Show portfolio of stocks"""
 
-    # user_data = db.execute(
-    #     """
-    #     SELECT *
-    #     FROM users
-    #     JOIN contracts ON contracts.user_id = users.id
-    #     WHERE users.id = :user_id
-    #     """, user_id=session["user_id"]
-    # )
+    user_id = session["user_id"]
 
-    return apology("TODO")
+    cash = round(float(db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]), 2)
+
+    stocks = db.execute(
+        """
+        SELECT symbol, company_name, SUM(shares) AS total_shares, price, SUM(total) AS total_price
+        FROM contracts
+        WHERE user_id = :user_id
+        GROUP BY symbol
+        HAVING total_shares > 0
+        """,
+        user_id=user_id
+    )
+
+    return render_template("index.html", stocks=stocks, cash=cash)
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -60,7 +68,7 @@ def buy():
     """Buy shares of stock"""
 
     if request.method == "POST":
-        symbol = request.form.get("symbol")
+        symbol = request.form.get("symbol").upper()
         shares = request.form.get("shares")
 
         if not symbol:
@@ -75,22 +83,16 @@ def buy():
 
         user_id = session["user_id"]
         company_name = data["name"]
-        price = int(data["price"] * 100)
-        total = int(data["price"] * int(shares) * 100)
+        price = round(float(data["price"]), 2)
+        total = round(float(data["price"] * float(shares)), 2)
 
-        sql_create_contracts_table = """
-        CREATE TABLE IF NOT EXISTS contracts
-        (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        user_id INTEGER NOT NULL,
-        company_name VARCHAR(255) NOT NULL,
-        price INTEGER NOT NULL,
-        symbol VARCHAR(255) NOT NULL,
-        shares INTEGER NOT NULL,
-        total INTEGER NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(id));
-        """
+        cash = round(float(db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]), 2)
 
-        db.execute(sql_create_contracts_table)
+        cash_after_contract = round((cash - total), 2)
+
+        if cash_after_contract < 0:
+            return apology("insufficient funds", 422)
+
         db.execute(
             """INSERT INTO contracts (user_id, company_name, price, symbol,
             shares, total) VALUES (:user_id, :company_name, :price,
@@ -103,6 +105,12 @@ def buy():
             total=total
         )
 
+        db.execute(
+            "UPDATE users SET cash = :cash_after_contract WHERE id = :user_id",
+            cash_after_contract=cash_after_contract,
+            user_id=user_id
+        )
+
         return redirect("/")
 
     return render_template("buy.html")
@@ -112,7 +120,10 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    return apology("TODO")
+
+    contracts = db.execute("SELECT * FROM contracts WHERE user_id = :user_id ORDER BY created_at DESC", user_id=session["user_id"])
+
+    return render_template("history.html", contracts=contracts)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -218,11 +229,10 @@ def register():
 
         # Create db record for new user
         db.execute("INSERT INTO users (username, hash) VALUES (:username, :password)",
-                   username=username, password=encrypted_password)
+            username=username, password=encrypted_password)
 
         # Get user_id from db
-        user_id = db.execute("SELECT id FROM users WHERE username == :username",
-                             username=username)
+        user_id = db.execute("SELECT id FROM users WHERE username == :username", username=username)[0]["id"]
 
         # Remember which user has logged in
         session["user_id"] = user_id
@@ -234,7 +244,72 @@ def register():
 @login_required
 def sell():
     """Sell shares of stock"""
-    return apology("TODO")
+
+    user_id = session["user_id"]
+
+    if request.method == "POST":
+        symbol = request.form.get("symbol")
+        shares = int(request.form.get("shares"))
+
+        if not symbol:
+            return apology("must provide symbol", 422)
+        elif not shares:
+            return apology("must provide shares", 422)
+
+        stock = db.execute("SELECT SUM(shares) AS total_shares, SUM(total) AS total_price, company_name FROM contracts WHERE user_id = :user_id AND symbol = :symbol",
+            user_id=user_id, symbol=symbol)[0]
+
+        user_cash = db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]
+
+        if stock["total_shares"] - shares < 0:
+            return apology("too many shares ", 400)
+
+        current_data = lookup(symbol)
+
+        user_cash = user_cash + (current_data["price"] * shares)
+        company_name = current_data["name"]
+        price = round(float(current_data["price"]), 2)
+        total = round(float(current_data["price"] * shares), 2)
+        contract_shares = shares - shares * 2
+
+        db.execute(
+            "UPDATE users SET cash = :user_cash WHERE id = :user_id",
+            user_cash=user_cash,
+            user_id=user_id
+        )
+
+        db.execute(
+            """INSERT INTO contracts (user_id, company_name, price, symbol,
+            shares, total) VALUES (:user_id, :company_name, :price,
+            :symbol, :shares, :total)""",
+            user_id=user_id,
+            company_name=company_name,
+            price=price,
+            symbol=symbol,
+            shares=contract_shares,
+            total=total
+        )
+
+        return redirect("/")
+    else:
+        symbols = []
+
+        symbols_query = db.execute(
+            """
+            SELECT symbol, SUM(shares) AS total_shares
+            FROM contracts
+            WHERE user_id = :user_id
+            GROUP BY symbol
+            HAVING total_shares > 0
+            """,
+            user_id=user_id
+        )
+
+        for symbol in symbols_query:
+            if not symbol["symbol"] in symbols:
+                symbols.append(symbol["symbol"])
+
+        return render_template("sell.html", symbols=symbols)
 
 
 def errorhandler(e):
