@@ -8,7 +8,10 @@ from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions, HTTPException, InternalServerError
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import apology, login_required, lookup, usd
+from helpers import apology, login_required, lookup, usd, fetch_user_cash
+from queries import (USER_STOCKS_QUERY, CONTRACT_CREATE_QUERY, USER_UPDATE_CASH_QUERY,
+                     USER_CONTRACTS_QUERY, USER_QUERY, USER_CREATE_QUERY, USER_STOCK_QUERY,
+                     SYMBOLS_QUERY, USER_CASH_QUERY)
 
 # Configure application
 app = Flask(__name__)
@@ -45,19 +48,8 @@ def index():
     """Show portfolio of stocks"""
 
     user_id = session["user_id"]
-
-    cash = round(float(db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]), 2)
-
-    stocks = db.execute(
-        """
-        SELECT symbol, company_name, SUM(shares) AS total_shares, price, SUM(total) AS total_price
-        FROM contracts
-        WHERE user_id = :user_id
-        GROUP BY symbol
-        HAVING total_shares > 0
-        """,
-        user_id=user_id
-    )
+    cash = fetch_user_cash(db, user_id)
+    stocks = db.execute(USER_STOCKS_QUERY, user_id=user_id)
 
     return render_template("index.html", stocks=stocks, cash=cash)
 
@@ -86,17 +78,14 @@ def buy():
         price = round(float(data["price"]), 2)
         total = round(float(data["price"] * float(shares)), 2)
 
-        cash = round(float(db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]), 2)
-
+        cash = fetch_user_cash(db, user_id)
         cash_after_contract = round((cash - total), 2)
 
         if cash_after_contract < 0:
             return apology("insufficient funds", 422)
 
         db.execute(
-            """INSERT INTO contracts (user_id, company_name, price, symbol,
-            shares, total) VALUES (:user_id, :company_name, :price,
-            :symbol, :shares, :total)""",
+            CONTRACT_CREATE_QUERY,
             user_id=user_id,
             company_name=company_name,
             price=price,
@@ -106,7 +95,7 @@ def buy():
         )
 
         db.execute(
-            "UPDATE users SET cash = :cash_after_contract WHERE id = :user_id",
+            USER_UPDATE_CASH_QUERY,
             cash_after_contract=cash_after_contract,
             user_id=user_id
         )
@@ -121,7 +110,7 @@ def buy():
 def history():
     """Show history of transactions"""
 
-    contracts = db.execute("SELECT * FROM contracts WHERE user_id = :user_id ORDER BY created_at DESC", user_id=session["user_id"])
+    contracts = db.execute(USER_CONTRACTS_QUERY, user_id=session["user_id"])
 
     return render_template("history.html", contracts=contracts)
 
@@ -145,15 +134,14 @@ def login():
             return apology("must provide password", 403)
 
         # Query database for username
-        rows = db.execute("SELECT * FROM users WHERE username = :username",
-                          username=request.form.get("username"))
+        username_rows = db.execute(USER_QUERY, username=request.form.get("username"))
 
         # Ensure username exists and password is correct
-        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
+        if len(username_rows) != 1 or not check_password_hash(username_rows[0]["hash"], request.form.get("password")):
             return apology("invalid username and/or password", 403)
 
         # Remember which user has logged in
-        session["user_id"] = rows[0]["id"]
+        session["user_id"] = username_rows[0]["id"]
 
         # Redirect user to home page
         return redirect("/")
@@ -217,8 +205,7 @@ def register():
             return apology("must provide correct confiration", 422)
 
         # Query database for username
-        user_exists = db.execute("SELECT * FROM users WHERE username = :username",
-                          username=username)
+        user_exists = db.execute(USER_QUERY, username=username)
 
         # Check username for uniqueuness
         if user_exists:
@@ -228,11 +215,10 @@ def register():
         encrypted_password = generate_password_hash(password)
 
         # Create db record for new user
-        db.execute("INSERT INTO users (username, hash) VALUES (:username, :password)",
-            username=username, password=encrypted_password)
+        db.execute(USER_CREATE_QUERY, username=username, password=encrypted_password)
 
         # Get user_id from db
-        user_id = db.execute("SELECT id FROM users WHERE username == :username", username=username)[0]["id"]
+        user_id = db.execute(USER_QUERY, username=username)[0]["id"]
 
         # Remember which user has logged in
         session["user_id"] = user_id
@@ -256,32 +242,29 @@ def sell():
         elif not shares:
             return apology("must provide shares", 422)
 
-        stock = db.execute("SELECT SUM(shares) AS total_shares, SUM(total) AS total_price, company_name FROM contracts WHERE user_id = :user_id AND symbol = :symbol",
-            user_id=user_id, symbol=symbol)[0]
+        stock = db.execute(USER_STOCK_QUERY, user_id=user_id, symbol=symbol)[0]
 
-        user_cash = db.execute("SELECT cash FROM users WHERE id = :user_id", user_id=user_id)[0]["cash"]
+        user_cash = db.execute(USER_CASH_QUERY, user_id=user_id)[0]["cash"]
 
         if stock["total_shares"] - shares < 0:
             return apology("too many shares ", 400)
 
         current_data = lookup(symbol)
 
-        user_cash = user_cash + (current_data["price"] * shares)
+        cash_after_contract = user_cash + (current_data["price"] * shares)
         company_name = current_data["name"]
         price = round(float(current_data["price"]), 2)
         total = round(float(current_data["price"] * shares), 2)
         contract_shares = shares - shares * 2
 
         db.execute(
-            "UPDATE users SET cash = :user_cash WHERE id = :user_id",
-            user_cash=user_cash,
+            USER_UPDATE_CASH_QUERY,
+            cash_after_contract=cash_after_contract,
             user_id=user_id
         )
 
         db.execute(
-            """INSERT INTO contracts (user_id, company_name, price, symbol,
-            shares, total) VALUES (:user_id, :company_name, :price,
-            :symbol, :shares, :total)""",
+            CONTRACT_CREATE_QUERY,
             user_id=user_id,
             company_name=company_name,
             price=price,
@@ -294,16 +277,7 @@ def sell():
     else:
         symbols = []
 
-        symbols_query = db.execute(
-            """
-            SELECT symbol, SUM(shares) AS total_shares
-            FROM contracts
-            WHERE user_id = :user_id
-            GROUP BY symbol
-            HAVING total_shares > 0
-            """,
-            user_id=user_id
-        )
+        symbols_query = db.execute(SYMBOLS_QUERY, user_id=user_id)
 
         for symbol in symbols_query:
             if not symbol["symbol"] in symbols:

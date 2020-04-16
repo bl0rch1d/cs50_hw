@@ -3,6 +3,8 @@ import requests
 from flask import redirect, render_template, session
 from functools import wraps
 
+from queries import USER_CASH_QUERY
+
 
 def apology(message, code=400):
     """Render message as an apology to user."""
@@ -62,3 +64,8 @@ def lookup(symbol):
 def usd(value):
     """Format value as USD."""
     return f"${value:,.2f}"
+
+def fetch_user_cash(db, user_id):
+    cash = db.execute(USER_CASH_QUERY, user_id=user_id)[0]["cash"]
+
+    return round(float(cash), 2)
