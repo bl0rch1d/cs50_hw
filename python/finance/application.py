@@ -13,6 +13,11 @@ from queries import (USER_STOCKS_QUERY, CONTRACT_CREATE_QUERY, USER_UPDATE_CASH_
                      USER_CONTRACTS_QUERY, USER_QUERY, USER_CREATE_QUERY, USER_STOCK_QUERY,
                      SYMBOLS_QUERY, USER_CASH_QUERY)
 
+from app.concepts.auth.login import Login
+from app.concepts.auth.register import Register
+from app.concepts.stock.index import Index
+
+
 # Configure application
 app = Flask(__name__)
 
@@ -45,11 +50,7 @@ db = SQL("sqlite:///finance.db", connect_args={'check_same_thread': False})
 @app.route("/")
 @login_required
 def index():
-    """Show portfolio of stocks"""
-
-    user_id = session["user_id"]
-    cash = fetch_user_cash(db, user_id)
-    stocks = db.execute(USER_STOCKS_QUERY, user_id=user_id)
+    cash, stocks = Index(session, db).call()
 
     return render_template("index.html", stocks=stocks, cash=cash)
 
@@ -117,48 +118,16 @@ def history():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Log user in"""
-
-    # Forget any user_id
-    session.clear()
-
-    # User reached route via POST (as by submitting a form via POST)
     if request.method == "POST":
-
-        # Ensure username was submitted
-        if not request.form.get("username"):
-            return apology("must provide username", 403)
-
-        # Ensure password was submitted
-        elif not request.form.get("password"):
-            return apology("must provide password", 403)
-
-        # Query database for username
-        username_rows = db.execute(USER_QUERY, username=request.form.get("username"))
-
-        # Ensure username exists and password is correct
-        if len(username_rows) != 1 or not check_password_hash(username_rows[0]["hash"], request.form.get("password")):
-            return apology("invalid username and/or password", 403)
-
-        # Remember which user has logged in
-        session["user_id"] = username_rows[0]["id"]
-
-        # Redirect user to home page
+        Login(request, session, db).call()
         return redirect("/")
-
-    # User reached route via GET (as by clicking a link or via redirect)
     else:
         return render_template("login.html")
 
 
 @app.route("/logout")
 def logout():
-    """Log user out"""
-
-    # Forget any user_id
     session.clear()
-
-    # Redirect user to login form
     return redirect("/")
 
 
@@ -188,40 +157,7 @@ def register():
     if request.method == 'GET':
         return render_template("register.html")
     else:
-        username = request.form.get("username")
-        password = request.form.get("password")
-        confirmation = request.form.get("confirmation")
-
-        # Ensure username was submitted
-        if not username:
-            return apology("must provide username", 422)
-
-        # Ensure password was submitted
-        elif not password:
-            return apology("must provide password", 422)
-
-        # Ensure confiration was submitted with the same value as password
-        elif not confirmation or not password == confirmation:
-            return apology("must provide correct confiration", 422)
-
-        # Query database for username
-        user_exists = db.execute(USER_QUERY, username=username)
-
-        # Check username for uniqueuness
-        if user_exists:
-            return apology("such username already exists", 422)
-
-        # Encrypt password
-        encrypted_password = generate_password_hash(password)
-
-        # Create db record for new user
-        db.execute(USER_CREATE_QUERY, username=username, password=encrypted_password)
-
-        # Get user_id from db
-        user_id = db.execute(USER_QUERY, username=username)[0]["id"]
-
-        # Remember which user has logged in
-        session["user_id"] = user_id
+        Register(request, session, db).call
 
     return redirect("/")
 
