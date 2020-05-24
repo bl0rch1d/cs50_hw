@@ -1,21 +1,31 @@
+from ..interactor import Interactor
+
 from queries import USER_CASH_QUERY, USER_STOCKS_QUERY
 
-class Index():
-    def __init__(self, session, db):
-        self.session = session
-        self.db      = db
+class Index(Interactor):
+  def __init__(self, session, db):
+    self.session = session
+    self.db      = db
 
-        self.user_id = session["user_id"]
+    self.user_id = session["user_id"]
 
-    def call(self):
-        cash    = self.__fetch_user_cash()
-        stocks  = self.__fetch_user_stocks()
+    self.user_cash = 0
+    self.user_stocks = []
 
-        return [cash, stocks]
+    super().__init__()
 
-    def __fetch_user_cash(self):
-        cash = self.db.execute(USER_CASH_QUERY, user_id=self.user_id)[0]["cash"]
-        return round(float(cash), 2)
+  def call(self):
+    steps = [
+      self.__fetch_user_cash,
+      self.__fetch_user_stocks
+    ]
 
-    def __fetch_user_stocks(self):
-        return self.db.execute(USER_STOCKS_QUERY, user_id=self.user_id)
+    self._interact(steps)
+
+  def __fetch_user_cash(self):
+    cash = self.db.execute(USER_CASH_QUERY, user_id=self.user_id)[0]["cash"]
+
+    self.user_cash = round(float(cash), 2)
+
+  def __fetch_user_stocks(self):
+    self.user_stocks = self.db.execute(USER_STOCKS_QUERY, user_id=self.user_id)
